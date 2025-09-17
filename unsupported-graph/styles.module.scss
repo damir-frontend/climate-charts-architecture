@@ -1,0 +1,11 @@
+.noDataContainer {
+  display: flex;
+  justify-content: center;
+}
+
+.noDataMessage {
+  position: absolute;
+  top: 50%;
+  margin-top: -0.625em;
+  font-size: large;
+}
