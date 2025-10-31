@@ -1,26 +1,20 @@
-import dayjs from '@dayjs';
-import { draggableMenuLoaderStore } from 'app/entities/draggable-menu/loader/model';
-import { getMeteopostArchiveData } from 'app/shared/api/meteorology';
-import create, { TStore } from 'utils/zustand';
+import { draggableMenuLoaderStore } from '@app/entities/draggable-menu/loader/model';
+import { fetchMeteopostArchiveData } from '@app/shared/api/charts/fetch-meteopost-archive-data';
+import { create, TStore } from '@utils';
 import { TMeteopostArchiveChartState } from './types';
+import { hasPrecipMean, hasTMax, hasTMin } from './utils';
 
 const initialChartState = {
-  dataTemperatureMin: [],
-  dataTemperatureMax: [],
-  dataPrecipitation: [],
+  data: {
+    TEMPERATURE_MIN: [],
+    TEMPERATURE_MAX: [],
+    PRECIPITATION: [],
+  },
   labels: [],
   offsetCalc: 0,
   errorMessage: '',
   warningMessage: '',
   visible: false,
-  yTemperatureMin: 0,
-  yTemperatureMax: 0,
-  yPrecipitationMin: 0,
-  yPrecipitationMax: 0,
-  xAxisMax: 0,
-  xAxisMin: 0,
-  yAxisMin: 0,
-  yAxisMax: 0,
   isLoadingMeteopostArchive: false,
 };
 
@@ -31,9 +25,6 @@ export const meteopostArchiveChartStore: TStore<TMeteopostArchiveChartState> = c
     setVisible: (value) => set({ visible: value }),
     setLabels: (labels) => set({ labels }),
     setOffsetCalc: (offsetCalc) => set({ offsetCalc }),
-    setDataTemperatureMin: (dataTemperatureMin) => set({ dataTemperatureMin }),
-    setDataTemperatureMax: (dataTemperatureMax) => set({ dataTemperatureMax }),
-    setDataPrecipitation: (dataPrecipitation) => set({ dataPrecipitation }),
     setWarningMessage: (message) => set({ warningMessage: message }),
     loadMeteopostArchiveData: async ({ sid_id }) => {
       const setDraggableMenuLoading =
@@ -41,40 +32,53 @@ export const meteopostArchiveChartStore: TStore<TMeteopostArchiveChartState> = c
       try {
         setDraggableMenuLoading(true);
         set({ isLoadingMeteopostArchive: true });
-        const { data } = await getMeteopostArchiveData({ sid_id });
-        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-        // @ts-ignore
-        if (data && !data.error) {
-          const dataConverted = data
-            .map((el) =>
-              Object.assign(el, {
-                dt: +el.dt * 1000,
-                t_min: Math.round(+el.t_min * 1000) / 1000,
-                t_max: Math.round(+el.t_max * 1000) / 1000,
-                precip_mean: Math.round(+el.precip_mean * 1000) / 1000,
-              }),
-            )
-            .sort((a, b) => dayjs(a.dt).diff(dayjs(b.dt)));
+        const { data } = await fetchMeteopostArchiveData({ sid_id });
+        if (data) {
+          const temperatureMin = data
+            .filter(hasTMin)
+            .map((el) => ({
+              x: el.dt * 1000,
+              y: Math.round(el.t_min * 1000) / 1000,
+            }))
+            .sort((a, b) => a.x - b.x);
+
+          const temperatureMax = data
+            .filter(hasTMax)
+            .map((el) => ({
+              x: el.dt * 1000,
+              y: Math.round(el.t_max * 1000) / 1000,
+            }))
+            .sort((a, b) => a.x - b.x);
+
+          const precipitation = data
+            .filter(hasPrecipMean)
+            .map((el) => ({
+              x: el.dt * 1000,
+              y: Math.round(el.precip_mean * 1000) / 1000,
+            }))
+            .sort((a, b) => a.x - b.x);
+
           set({
-            dataTemperatureMin: dataConverted.map((el) => ({ x: el.dt, y: el.t_min })),
-            dataTemperatureMax: dataConverted.map((el) => ({ x: el.dt, y: el.t_max })),
-            dataPrecipitation: dataConverted.map((el) => ({ x: el.dt, y: el.precip_mean })),
-            yTemperatureMin: Math.min(...dataConverted.map((el) => el.t_min)),
-            yTemperatureMax: Math.max(...dataConverted.map((el) => el.t_max)),
-            yPrecipitationMin: Math.min(...dataConverted.map((el) => el.precip_mean)),
-            yPrecipitationMax: Math.max(...dataConverted.map((el) => el.precip_mean)),
+            data: {
+              TEMPERATURE_MIN: temperatureMin,
+              TEMPERATURE_MAX: temperatureMax,
+              PRECIPITATION: precipitation,
+            },
             errorMessage:
-              data.length === 0 || dataConverted.length === 0
+              data.length === 0 ||
+              (temperatureMin.length === 0 &&
+                temperatureMax.length === 0 &&
+                precipitation.length === 0)
                 ? `Отсутствуют данные для архивного метеопоста ${sid_id}`
                 : '',
           });
         } else {
           set({
-            dataTemperatureMin: [],
-            dataTemperatureMax: [],
-            dataPrecipitation: [],
-            xAxisMax: 0,
-            xAxisMin: 0,
+            data: {
+              TEMPERATURE_MIN: [],
+              TEMPERATURE_MAX: [],
+              PRECIPITATION: [],
+            },
           });
         }
       } catch (err) {
@@ -91,8 +95,6 @@ export const meteopostArchiveChartStore: TStore<TMeteopostArchiveChartState> = c
     (labels) =>
       meteopostArchiveChartStore.setState({
         visible: labels.length > 0,
-        xAxisMax: labels[labels.length - 1],
-        xAxisMin: labels[0],
       }),
   ],
 );
