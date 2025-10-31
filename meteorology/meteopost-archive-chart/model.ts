@@ -1,7 +1,8 @@
-import { chartData } from 'app/entities/chart-utils/const';
+import dayjs from '@dayjs';
+import { draggableMenuLoaderStore } from 'app/entities/draggable-menu/loader/model';
 import { getMeteopostArchiveData } from 'app/shared/api/meteorology';
-import dayjs from 'dayjs';
 import create, { TStore } from 'utils/zustand';
+import { TMeteopostArchiveChartState } from './types';
 
 const initialChartState = {
   dataTemperatureMin: [],
@@ -20,41 +21,13 @@ const initialChartState = {
   xAxisMin: 0,
   yAxisMin: 0,
   yAxisMax: 0,
-  isLoading: false,
-};
-
-type TMeteopostArchiveChartState = {
-  dataTemperatureMin: chartData;
-  dataTemperatureMax: chartData;
-  dataPrecipitation: chartData;
-  offsetCalc: number;
-  setOffsetCalc: (offsetCalc: number) => void;
-  setDataTemperatureMin: (data: chartData) => void;
-  setDataTemperatureMax: (data: chartData) => void;
-  setDataPrecipitation: (data: chartData) => void;
-  labels: number[];
-  fetchMeteopostArchiveData: ({ sid_id }: { sid_id: number }) => void;
-  resetChart: () => void;
-  visible: boolean;
-  yTemperatureMin: number;
-  yTemperatureMax: number;
-  yPrecipitationMin: number;
-  yPrecipitationMax: number;
-  xAxisMin: number;
-  xAxisMax: number;
-  errorMessage: string;
-  setErrorMessage: (message: string) => void;
-  warningMessage: string;
-  setWarningMessage: (message: string) => void;
-  setLabels: (labels: number[]) => void;
-  setVisible: (value: boolean) => void;
-  isLoading: boolean;
+  isLoadingMeteopostArchive: false,
 };
 
 export const meteopostArchiveChartStore: TStore<TMeteopostArchiveChartState> = create(
   (set) => ({
     ...initialChartState,
-    resetChart: () => set({ ...initialChartState }),
+    resetGraph: () => set({ ...initialChartState }),
     setVisible: (value) => set({ visible: value }),
     setLabels: (labels) => set({ labels }),
     setOffsetCalc: (offsetCalc) => set({ offsetCalc }),
@@ -62,15 +35,25 @@ export const meteopostArchiveChartStore: TStore<TMeteopostArchiveChartState> = c
     setDataTemperatureMax: (dataTemperatureMax) => set({ dataTemperatureMax }),
     setDataPrecipitation: (dataPrecipitation) => set({ dataPrecipitation }),
     setWarningMessage: (message) => set({ warningMessage: message }),
-    fetchMeteopostArchiveData: async ({ sid_id }) => {
+    loadMeteopostArchiveData: async ({ sid_id }) => {
+      const setDraggableMenuLoading =
+        draggableMenuLoaderStore.getState().setDraggableMenuLoading;
       try {
-        set({ isLoading: true });
+        setDraggableMenuLoading(true);
+        set({ isLoadingMeteopostArchive: true });
         const { data } = await getMeteopostArchiveData({ sid_id });
         // eslint-disable-next-line @typescript-eslint/ban-ts-comment
         // @ts-ignore
         if (data && !data.error) {
           const dataConverted = data
-            .map((el) => Object.assign(el, { dt: +el.dt * 1000 }))
+            .map((el) =>
+              Object.assign(el, {
+                dt: +el.dt * 1000,
+                t_min: Math.round(+el.t_min * 1000) / 1000,
+                t_max: Math.round(+el.t_max * 1000) / 1000,
+                precip_mean: Math.round(+el.precip_mean * 1000) / 1000,
+              }),
+            )
             .sort((a, b) => dayjs(a.dt).diff(dayjs(b.dt)));
           set({
             dataTemperatureMin: dataConverted.map((el) => ({ x: el.dt, y: el.t_min })),
@@ -84,7 +67,6 @@ export const meteopostArchiveChartStore: TStore<TMeteopostArchiveChartState> = c
               data.length === 0 || dataConverted.length === 0
                 ? `Отсутствуют данные для архивного метеопоста ${sid_id}`
                 : '',
-            isLoading: false,
           });
         } else {
           set({
@@ -93,12 +75,13 @@ export const meteopostArchiveChartStore: TStore<TMeteopostArchiveChartState> = c
             dataPrecipitation: [],
             xAxisMax: 0,
             xAxisMin: 0,
-            isLoading: false,
           });
         }
       } catch (err) {
         console.log(err);
-        set({ isLoading: false });
+      } finally {
+        setDraggableMenuLoading(false);
+        set({ isLoadingMeteopostArchive: false });
       }
     },
     setErrorMessage: (message) => set({ errorMessage: message }),
